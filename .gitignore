@@ -1,0 +1,10 @@
+venv/
+__pycache__/
+*.pyc
+
+.device_identity.json
+docs/
+backup/
+
+.DS_Store
+Thumbs.db
