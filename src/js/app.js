@@ -3,6 +3,7 @@ const STORAGE_IDENTITY_KEY = "openclaw.browser.identity";
 const MAX_FRAMES = 2000;
 const PROTOCOL_VERSION = 3;
 const HISTORY_POLL_INTERVAL_MS = 5000;
+const RECONNECT_DELAY_MS = 3000;
 
 const state = {
   socket: null,
@@ -16,6 +17,8 @@ const state = {
   historyPollTimer: null,
   historyLoading: false,
   lastRealtimeEventAt: 0,
+  reconnectTimer: null,
+  manualDisconnect: false,
   pollEnabled: false,
   protocolVersion: "-",
   connId: "-",
@@ -34,6 +37,7 @@ const els = {
   gatewayScopes: document.getElementById("gateway-scopes"),
   connectBtn: document.getElementById("connect-btn"),
   disconnectBtn: document.getElementById("disconnect-btn"),
+  saveSettingsBtn: document.getElementById("save-settings-btn"),
   pollToggleBtn: document.getElementById("poll-toggle-btn"),
   pollDot: document.getElementById("poll-dot"),
   settingsBtn: document.getElementById("settings-btn"),
@@ -53,6 +57,12 @@ const els = {
   deviceId: document.getElementById("device-id"),
   frameCount: document.getElementById("frame-count"),
 };
+
+function setConnectButtonBusy(busy) {
+  if (!els.connectBtn) return;
+  els.connectBtn.disabled = busy;
+  els.connectBtn.textContent = busy ? "Connecting..." : "Connect";
+}
 
 function escapeHtml(text) {
   return String(text)
@@ -76,6 +86,28 @@ function setStatus(status, detail) {
 function renderPollingButton() {
   els.pollToggleBtn.classList.toggle("active", state.pollEnabled);
   els.pollDot.className = `toggle-dot ${state.pollEnabled ? "on" : "off"}`;
+}
+
+function clearReconnectTimer() {
+  if (state.reconnectTimer !== null) {
+    window.clearTimeout(state.reconnectTimer);
+    state.reconnectTimer = null;
+  }
+}
+
+function scheduleReconnect() {
+  if (state.manualDisconnect || state.reconnectTimer !== null || !state.config.gateway) {
+    return;
+  }
+  setStatus("connecting", `reconnecting in ${RECONNECT_DELAY_MS / 1000}s`);
+  state.reconnectTimer = window.setTimeout(() => {
+    state.reconnectTimer = null;
+    connect({ preserveState: true }).catch((error) => {
+      appendFrame({ direction: "system", label: "reconnect.error", body: String(error), kind: "system" });
+      setStatus("error", String(error));
+      scheduleReconnect();
+    });
+  }, RECONNECT_DELAY_MS);
 }
 
 function setModalVisible(name, visible) {
@@ -141,6 +173,14 @@ function renderSessions() {
   }
 }
 
+function ensureSessionVisible(sessionKey) {
+  if (!sessionKey) return;
+  const existing = state.sessions.find((session) => session.key === sessionKey);
+  if (existing) return;
+  state.sessions = [{ key: sessionKey, displayName: sessionKey }, ...state.sessions];
+  renderSessions();
+}
+
 function extractMessageText(message) {
   const content = message?.content;
   if (Array.isArray(content)) {
@@ -189,6 +229,13 @@ function summarizeToolResult(text) {
   };
 }
 
+function summarizeThinking(text) {
+  const normalized = String(text || "").replace(/\*\*/g, "").trim();
+  if (!normalized) return "思考过程";
+  const firstLine = normalized.split("\n").find(Boolean) || normalized;
+  return firstLine.length > 72 ? `${firstLine.slice(0, 72)}...` : firstLine;
+}
+
 function renderContentParts(entry) {
   const content = entry?.content;
   if (!Array.isArray(content)) {
@@ -204,6 +251,20 @@ function renderContentParts(entry) {
 
       if (item.type === "text") {
         return `<div class="history-text">${escapeHtml(item.text || "")}</div>`;
+      }
+
+      if (item.type === "thinking") {
+        const thinkingText = item.thinking || "";
+        const summary = summarizeThinking(thinkingText);
+        return `
+          <details class="thinking-card">
+            <summary>
+              <span class="thinking-label">thinking</span>
+              <span class="thinking-summary">${escapeHtml(summary)}</span>
+            </summary>
+            <div class="thinking-body">${escapeHtml(thinkingText)}</div>
+          </details>
+        `;
       }
 
       if (item.type === "toolCall") {
@@ -480,6 +541,13 @@ function upsertLiveMessage({ sessionKey, runId, role, text, final }) {
   renderHistory();
 }
 
+function extractAgentText(data) {
+  if (!data || typeof data !== "object") return "";
+  if (typeof data.delta === "string") return data.delta;
+  if (typeof data.text === "string") return data.text;
+  return "";
+}
+
 function handleChatEvent(payload) {
   const sessionKey = payload?.sessionKey;
   const runId = payload?.runId;
@@ -487,6 +555,11 @@ function handleChatEvent(payload) {
   const role = payload?.message?.role || "assistant";
   const text = extractMessageText(payload?.message || {});
   if (!sessionKey || !runId || !text) {
+    return;
+  }
+  ensureSessionVisible(sessionKey);
+  console.debug("[openclaw-ws] chat event", payload);
+  if (sessionKey !== state.activeSessionKey) {
     return;
   }
   upsertLiveMessage({
@@ -506,9 +579,14 @@ function handleAgentEvent(payload) {
   if (!sessionKey || !runId) {
     return;
   }
+  ensureSessionVisible(sessionKey);
+  console.debug("[openclaw-ws] agent event", payload);
+  if (sessionKey !== state.activeSessionKey) {
+    return;
+  }
 
   if (stream === "assistant") {
-    const text = typeof data.text === "string" ? data.text : "";
+    const text = extractAgentText(data);
     if (!text) {
       return;
     }
@@ -552,6 +630,16 @@ function loadConfig() {
 
 function saveConfig() {
   localStorage.setItem(STORAGE_CONFIG_KEY, JSON.stringify(state.config));
+}
+
+function syncConfigFromInputs() {
+  state.config = {
+    gateway: els.gatewayUrl.value.trim(),
+    token: els.gatewayToken.value.trim(),
+    scopes: els.gatewayScopes.value.trim() || "operator.read,operator.write",
+  };
+  saveConfig();
+  return state.config;
 }
 
 function safeJsonParse(raw) {
@@ -630,7 +718,7 @@ function base64UrlToBytes(value) {
 }
 
 function platformName() {
-  return "linux";
+  return navigator.platform || "web";
 }
 
 function deviceFamilyName() {
@@ -684,17 +772,17 @@ async function buildConnectRequest({ identity, nonce }) {
       client: {
         id: clientId(),
         version: "1.0.0",
-        platform: platformName(),
+        platform: navigator.platform || platformName(),
         mode: clientMode(),
       },
       role: "operator",
       scopes,
-      caps: [],
+      caps: ["tool-events"],
       commands: [],
       permissions: {},
       auth: { token: gatewayToken },
       locale: navigator.language || "en-US",
-      userAgent: "openclaw-ws-monitor/1.0",
+      userAgent: navigator.userAgent || "openclaw-ws-monitor/1.0",
       device: {
         id: identity.deviceId,
         publicKey: identity.publicKeyText,
@@ -706,43 +794,50 @@ async function buildConnectRequest({ identity, nonce }) {
   };
 }
 
-async function connect() {
+async function connect({ preserveState = false } = {}) {
+  setConnectButtonBusy(true);
   if (!window.isSecureContext) {
     setStatus("error", "WebCrypto 需要安全上下文（https 或 localhost）");
+    setModalVisible("status", true);
+    setConnectButtonBusy(false);
     return;
   }
 
   if (!("crypto" in window) || !crypto.subtle) {
     setStatus("error", "当前浏览器不支持 WebCrypto");
+    setModalVisible("status", true);
+    setConnectButtonBusy(false);
     return;
   }
 
-  state.config = {
-    gateway: els.gatewayUrl.value.trim(),
-    token: els.gatewayToken.value.trim(),
-    scopes: els.gatewayScopes.value.trim() || "operator.read,operator.write",
-  };
-  saveConfig();
+  syncConfigFromInputs();
 
   if (!state.config.gateway) {
     setStatus("error", "请先输入 Gateway URL");
+    setModalVisible("status", true);
+    setConnectButtonBusy(false);
     return;
   }
 
-  disconnect();
-  state.sessions = [];
-  state.history = [];
-  state.activeSessionKey = "";
-  state.liveRuns = new Map();
-  state.lastRealtimeEventAt = 0;
-  stopHistoryPolling();
-  renderSessions();
-  renderHistory();
+  clearReconnectTimer();
+  state.manualDisconnect = false;
+  disconnect(false, preserveState);
+  if (!preserveState) {
+    state.sessions = [];
+    state.history = [];
+    state.activeSessionKey = "";
+    state.liveRuns = new Map();
+    state.lastRealtimeEventAt = 0;
+    stopHistoryPolling();
+    renderSessions();
+    renderHistory();
+  }
 
   const identity = await loadOrCreateIdentity();
   els.deviceId.textContent = identity.deviceId;
 
   setStatus("connecting", `connecting ${state.config.gateway}`);
+  setModalVisible("status", true);
   appendFrame({
     direction: "outbound",
     label: "config",
@@ -760,6 +855,7 @@ async function connect() {
   state.socket = socket;
 
   socket.addEventListener("open", () => {
+    clearReconnectTimer();
     setStatus("handshaking", "waiting for connect.challenge");
   });
 
@@ -802,11 +898,20 @@ async function connect() {
       els.protocolVersion.textContent = state.protocolVersion;
       els.connId.textContent = state.connId;
       if (payload.payload?.auth?.deviceToken) {
-        state.config.token = payload.payload.auth.deviceToken;
-        els.gatewayToken.value = state.config.token;
-        saveConfig();
+        appendFrame({
+          direction: "system",
+          label: "device-token.received",
+          body: {
+            note: "deviceToken received from hello-ok but not persisted; keep using the configured gateway token",
+            role: payload.payload.auth.role || "",
+            scopes: payload.payload.auth.scopes || [],
+          },
+          kind: "system",
+          topic: "system",
+        });
       }
       setStatus("connected", "handshake complete");
+      setConnectButtonBusy(false);
       await loadSessions().catch((error) => {
         appendFrame({ direction: "system", label: "sessions.list.error", body: String(error), kind: "system" });
       });
@@ -833,14 +938,24 @@ async function connect() {
 
   socket.addEventListener("close", (event) => {
     setStatus("closed", `closed ${event.code} ${event.reason || ""}`.trim());
+    setConnectButtonBusy(false);
+    if (state.socket === socket) {
+      state.socket = null;
+    }
+    scheduleReconnect();
   });
 
   socket.addEventListener("error", () => {
     setStatus("error", "websocket error");
+    setConnectButtonBusy(false);
   });
 }
 
-function disconnect() {
+function disconnect(manual = true, preserveState = false) {
+  if (manual) {
+    state.manualDisconnect = true;
+  }
+  clearReconnectTimer();
   if (state.socket) {
     const socket = state.socket;
     state.socket = null;
@@ -850,10 +965,14 @@ function disconnect() {
       // ignore
     }
   }
+  setConnectButtonBusy(false);
   for (const [, pending] of state.pendingRequests) {
     pending.reject(new Error("socket disconnected"));
   }
   state.pendingRequests.clear();
+  if (preserveState) {
+    return;
+  }
   state.sessions = [];
   state.history = [];
   state.activeSessionKey = "";
@@ -900,14 +1019,22 @@ function init() {
   renderSessions();
   renderHistory();
   renderPollingButton();
+  setConnectButtonBusy(false);
 
-  els.connectBtn.addEventListener("click", () => {
+  els.saveSettingsBtn?.addEventListener("click", () => {
+    syncConfigFromInputs();
+    setStatus("idle", "配置已保存");
+  });
+
+  els.connectBtn.addEventListener("click", (event) => {
+    event.preventDefault();
     connect().catch((error) => {
       appendFrame({ direction: "system", label: "error", body: String(error), kind: "system" });
       setStatus("error", String(error));
+      setConnectButtonBusy(false);
     });
   });
-  els.disconnectBtn.addEventListener("click", disconnect);
+  els.disconnectBtn.addEventListener("click", () => disconnect(true));
   els.pollToggleBtn.addEventListener("click", togglePolling);
   els.settingsBtn.addEventListener("click", () => setModalVisible("settings", true));
   els.statusBtn.addEventListener("click", () => setModalVisible("status", true));
