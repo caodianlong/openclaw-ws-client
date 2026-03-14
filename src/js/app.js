@@ -175,7 +175,7 @@ function renderSessions() {
 
 function ensureSessionVisible(sessionKey) {
   if (!sessionKey) return;
-  const existing = state.sessions.find((session) => session.key === sessionKey);
+  const existing = state.sessions.find((session) => sessionKeysMatch(session.key, sessionKey));
   if (existing) return;
   state.sessions = [{ key: sessionKey, displayName: sessionKey }, ...state.sessions];
   renderSessions();
@@ -511,19 +511,68 @@ function normalizeHistoryMessages(messages) {
   }));
 }
 
+function sessionKeyVariants(sessionKey) {
+  const raw = String(sessionKey || "").trim();
+  if (!raw) return [];
+  const parts = raw.split(":").filter(Boolean);
+  if (!parts.length) return [raw];
+  const variants = new Set([raw]);
+  for (let index = 1; index < parts.length; index += 1) {
+    variants.add(parts.slice(index).join(":"));
+  }
+  variants.add(parts[parts.length - 1]);
+  return Array.from(variants);
+}
+
+function sessionKeysMatch(incoming, current) {
+  if (!incoming || !current) return false;
+  const incomingVariants = new Set(sessionKeyVariants(incoming));
+  return sessionKeyVariants(current).some((variant) => incomingVariants.has(variant));
+}
+
+function resolveVisibleSessionKey(sessionKey) {
+  if (sessionKeysMatch(sessionKey, state.activeSessionKey)) {
+    return state.activeSessionKey || sessionKey;
+  }
+  return sessionKey;
+}
+
+function mergeLiveText(previousText, nextText) {
+  const prev = String(previousText || "");
+  const next = String(nextText || "");
+  if (!prev) return next;
+  if (!next) return prev;
+  if (next === prev) return prev;
+  if (next.startsWith(prev)) return next;
+  if (prev.endsWith(next)) return prev;
+
+  const overlapLimit = Math.min(prev.length, next.length);
+  for (let size = overlapLimit; size > 0; size -= 1) {
+    if (prev.slice(-size) === next.slice(0, size)) {
+      return prev + next.slice(size);
+    }
+  }
+  return prev + next;
+}
+
 function upsertLiveMessage({ sessionKey, runId, role, text, final }) {
-  if (!sessionKey || sessionKey !== state.activeSessionKey) {
+  const visibleSessionKey = resolveVisibleSessionKey(sessionKey);
+  if (!visibleSessionKey || visibleSessionKey !== state.activeSessionKey) {
     return;
   }
   markRealtimeActivity();
-  const liveKey = `${sessionKey}:${runId}:${role}`;
+  const liveKey = `${visibleSessionKey}:${runId}:${role}`;
   const existingIndex = state.history.findIndex((item) => item.liveKey === liveKey);
+  const previousEntry =
+    existingIndex >= 0 ? state.history[existingIndex] : state.liveRuns.get(liveKey);
+  const mergedText = mergeLiveText(previousEntry?.text, text);
   const nextEntry = {
     role,
-    content: [{ type: "text", text }],
-    text,
+    content: [{ type: "text", text: mergedText }],
+    text: mergedText,
     final,
     runId,
+    sessionKey: visibleSessionKey,
     liveKey,
   };
 
@@ -541,10 +590,80 @@ function upsertLiveMessage({ sessionKey, runId, role, text, final }) {
   renderHistory();
 }
 
+function upsertLiveEntry(liveKey, nextEntry) {
+  const existingIndex = state.history.findIndex((item) => item.liveKey === liveKey);
+  if (existingIndex >= 0) {
+    state.history[existingIndex] = {
+      ...state.history[existingIndex],
+      ...nextEntry,
+      final: nextEntry.final || state.history[existingIndex].final,
+    };
+  } else {
+    state.history.push(nextEntry);
+  }
+  state.liveRuns.set(liveKey, nextEntry);
+  renderHistory();
+}
+
+function summarizeJson(value, fallback = "") {
+  if (typeof value === "string") return value;
+  if (value === undefined || value === null) return fallback;
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return fallback;
+  }
+}
+
+function upsertToolEvent(payload) {
+  const visibleSessionKey = resolveVisibleSessionKey(payload?.sessionKey);
+  const runId = payload?.runId;
+  if (!visibleSessionKey || !runId || visibleSessionKey !== state.activeSessionKey) {
+    return;
+  }
+
+  markRealtimeActivity();
+  const data = payload?.data || {};
+  const phase = data.phase || payload?.phase || "update";
+  const toolId = data.toolCallId || data.id || payload?.toolCallId || payload?.id || `${payload?.stream || "tool"}:${phase}`;
+  const toolName = data.toolName || data.name || payload?.toolName || payload?.name || "tool";
+  const isTerminal = phase === "end" || phase === "result" || phase === "error";
+  const input = data.arguments || data.input || data.params || payload?.arguments || payload?.input || {};
+  const output =
+    data.result ?? data.output ?? data.text ?? data.delta ?? data.error ?? payload?.result ?? payload?.output ?? payload?.error;
+
+  if (phase === "start" || phase === "call") {
+    const liveKey = `${visibleSessionKey}:${runId}:tool:${toolId}:call`;
+    upsertLiveEntry(liveKey, {
+      role: "tool",
+      content: [{ type: "toolCall", id: String(toolId), name: toolName, arguments: input }],
+      final: isTerminal,
+      runId,
+      sessionKey: visibleSessionKey,
+      liveKey,
+    });
+    return;
+  }
+
+  const liveKey = `${visibleSessionKey}:${runId}:tool:${toolId}:result`;
+  upsertLiveEntry(liveKey, {
+    role: "toolResult",
+    toolName,
+    toolCallId: String(toolId),
+    isError: phase === "error",
+    content: [{ type: "text", text: summarizeJson(output, phase) }],
+    final: isTerminal,
+    runId,
+    sessionKey: visibleSessionKey,
+    liveKey,
+  });
+}
+
 function extractAgentText(data) {
   if (!data || typeof data !== "object") return "";
   if (typeof data.delta === "string") return data.delta;
   if (typeof data.text === "string") return data.text;
+  if (typeof data.reasoning === "string") return data.reasoning;
   return "";
 }
 
@@ -554,21 +673,39 @@ function handleChatEvent(payload) {
   const stateValue = payload?.state;
   const role = payload?.message?.role || "assistant";
   const text = extractMessageText(payload?.message || {});
-  if (!sessionKey || !runId || !text) {
+  if (!sessionKey || !runId) {
     return;
   }
   ensureSessionVisible(sessionKey);
   console.debug("[openclaw-ws] chat event", payload);
-  if (sessionKey !== state.activeSessionKey) {
+  const visibleSessionKey = resolveVisibleSessionKey(sessionKey);
+  if (visibleSessionKey !== state.activeSessionKey) {
     return;
   }
-  upsertLiveMessage({
-    sessionKey,
-    runId,
-    role,
-    text,
-    final: stateValue === "final",
-  });
+
+  if (text) {
+    upsertLiveMessage({
+      sessionKey: visibleSessionKey,
+      runId,
+      role,
+      text,
+      final: stateValue === "final",
+    });
+  }
+
+  if (stateValue === "final" || stateValue === "aborted" || stateValue === "error") {
+    const prefix = `${visibleSessionKey}:${runId}:`;
+    for (const [liveKey, entry] of state.liveRuns.entries()) {
+      if (!liveKey.startsWith(prefix)) continue;
+      upsertLiveEntry(liveKey, {
+        ...entry,
+        final: true,
+      });
+    }
+    refreshActiveHistory({ silent: true }).catch((error) => {
+      appendFrame({ direction: "system", label: "chat.final.refresh.error", body: String(error), kind: "system" });
+    });
+  }
 }
 
 function handleAgentEvent(payload) {
@@ -581,7 +718,8 @@ function handleAgentEvent(payload) {
   }
   ensureSessionVisible(sessionKey);
   console.debug("[openclaw-ws] agent event", payload);
-  if (sessionKey !== state.activeSessionKey) {
+  const visibleSessionKey = resolveVisibleSessionKey(sessionKey);
+  if (visibleSessionKey !== state.activeSessionKey) {
     return;
   }
 
@@ -591,7 +729,7 @@ function handleAgentEvent(payload) {
       return;
     }
     upsertLiveMessage({
-      sessionKey,
+      sessionKey: visibleSessionKey,
       runId,
       role: "assistant",
       text,
@@ -600,18 +738,39 @@ function handleAgentEvent(payload) {
     return;
   }
 
+  if (stream === "tool") {
+    upsertToolEvent({
+      ...payload,
+      sessionKey: visibleSessionKey,
+    });
+    return;
+  }
+
   if (stream === "lifecycle" && data.phase === "end") {
-    const prefix = `${sessionKey}:${runId}:`;
+    const prefix = `${visibleSessionKey}:${runId}:`;
     for (const [liveKey, entry] of state.liveRuns.entries()) {
       if (!liveKey.startsWith(prefix)) continue;
-      upsertLiveMessage({
-        sessionKey,
-        runId,
-        role: entry.role || "assistant",
-        text: entry.text || extractMessageText(entry),
+      upsertLiveEntry(liveKey, {
+        ...entry,
         final: true,
       });
     }
+    refreshActiveHistory({ silent: true }).catch((error) => {
+      appendFrame({ direction: "system", label: "agent.lifecycle.refresh.error", body: String(error), kind: "system" });
+    });
+  }
+
+  if (stream === "lifecycle" && data.phase === "error") {
+    appendFrame({
+      direction: "system",
+      label: "agent.lifecycle.error",
+      body: payload,
+      kind: "system",
+      topic: "agent",
+    });
+    refreshActiveHistory({ silent: true }).catch((error) => {
+      appendFrame({ direction: "system", label: "agent.lifecycle.refresh.error", body: String(error), kind: "system" });
+    });
   }
 }
 
