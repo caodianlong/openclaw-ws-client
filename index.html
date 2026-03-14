@@ -3,111 +3,214 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>OpenClaw Browser Client</title>
-  <link rel="stylesheet" href="./src/css/styles.css">
+  <title>OpenClaw | Dashboard</title>
+  <!-- Tailwind CSS & Plugins -->
+  <script src="https://cdn.tailwindcss.com?plugins=typography"></script>
+  <!-- Font Awesome -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Marked.js -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              soft: '#fff1ea',
+              DEFAULT: '#ff7442',
+              strong: '#e65a2b',
+            }
+          },
+          animation: {
+            'fade-in': 'fadeIn 0.3s ease-out forwards',
+          },
+          keyframes: {
+            fadeIn: {
+              '0%': { opacity: '0', transform: 'translateY(10px)' },
+              '100%': { opacity: '1', transform: 'translateY(0)' },
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    body { font-family: 'Inter', sans-serif; }
+    .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+    .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+    .dark .custom-scrollbar::-webkit-scrollbar-thumb { background: #475569; }
+  </style>
 </head>
-<body>
-  <div class="app-shell">
-    <aside class="sidebar">
-      <section class="panel">
-        <div class="panel-title">Sessions</div>
-        <div id="session-list" class="session-list"></div>
-      </section>
+<body class="bg-stone-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 transition-colors duration-300">
+  <div class="flex flex-col md:flex-row h-screen overflow-hidden">
+    <!-- Sidebar -->
+    <aside class="w-full md:w-72 bg-white dark:bg-slate-900 border-b md:border-b-0 md:border-r border-slate-200 dark:border-slate-800 flex flex-col z-20">
+      <div class="p-6">
+        <div class="flex items-center gap-3 mb-8">
+          <div class="w-8 h-8 bg-brand rounded-lg flex items-center justify-center text-white">
+            <i class="fa-solid fa-claw"></i>
+          </div>
+          <h1 class="text-xl font-bold tracking-tight">OpenClaw</h1>
+        </div>
+        
+        <nav class="space-y-6">
+          <section>
+            <h2 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-4 px-2">Sessions</h2>
+            <div id="session-list" class="space-y-1 custom-scrollbar max-h-[50vh] overflow-y-auto pr-2">
+              <!-- Sessions rendered here -->
+              <div class="px-3 py-2 text-sm text-slate-500 italic">Loading sessions...</div>
+            </div>
+          </section>
+        </nav>
+      </div>
+      
+      <div class="mt-auto p-4 border-t border-slate-100 dark:border-slate-800">
+        <button id="settings-btn" class="w-full flex items-center gap-3 px-4 py-2 text-sm font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl transition-all">
+          <i class="fa-solid fa-sliders"></i>
+          <span>Connection Settings</span>
+        </button>
+      </div>
     </aside>
 
-    <main class="workspace">
-      <header class="workspace-header">
-        <div class="badge">OpenClaw</div>
-        <div class="toolbar">
-          <button id="poll-toggle-btn" class="ghost-btn">
-            <span id="poll-dot" class="toggle-dot off"></span>
-            <span>自动刷新</span>
+    <!-- Main Content -->
+    <main class="flex-1 flex flex-col min-w-0 bg-slate-50/50 dark:bg-slate-950">
+      <!-- Top Header -->
+      <header class="h-16 px-6 border-b border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md flex items-center justify-between sticky top-0 z-10">
+        <div class="flex items-center gap-4">
+          <div id="status-btn" class="group flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 cursor-pointer hover:border-brand/50 transition-all">
+            <span id="status-dot" class="w-2 h-2 rounded-full bg-slate-400"></span>
+            <span class="text-xs font-semibold uppercase tracking-wide">Status: <span id="status-text-header">Idle</span></span>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-3">
+          <button id="theme-toggle-btn" class="p-2 text-slate-400 hover:text-brand transition-colors" title="Toggle Dark/Light Mode">
+            <i class="fa-solid fa-moon dark:hidden"></i>
+            <i class="fa-solid fa-sun hidden dark:block"></i>
           </button>
-          <button id="status-btn" class="icon-btn" aria-label="状态">
-            <span id="status-dot" class="status-dot idle"></span>
-            <span class="icon-btn-text">状态</span>
+          <div class="h-4 w-[1px] bg-slate-200 dark:bg-slate-800 mx-1"></div>
+          <button id="poll-toggle-btn" class="flex items-center gap-2 px-4 py-1.5 text-sm font-medium rounded-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-brand/50 transition-all">
+            <span id="poll-dot" class="w-2 h-2 rounded-full bg-slate-300"></span>
+            <span>Auto Refresh</span>
           </button>
-          <button id="settings-btn" class="ghost-btn">设置</button>
+          <div class="h-4 w-[1px] bg-slate-200 dark:bg-slate-800 mx-1"></div>
+          <button id="copy-frames-btn" class="p-2 text-slate-400 hover:text-brand transition-colors" title="Copy Raw Frames">
+            <i class="fa-solid fa-copy"></i>
+          </button>
         </div>
       </header>
 
-      <section class="history-panel">
-        <div class="stream-header">
-          <div class="stream-title">
-            <strong>Chat History</strong>
-            <button id="copy-frames-btn" class="text-btn" aria-label="复制原始 WebSocket Frames">Copy</button>
+      <!-- Chat Area -->
+      <section class="flex-1 flex flex-col min-h-0 relative">
+        <div class="px-6 py-4 flex items-center justify-between bg-white/50 dark:bg-slate-900/50 border-b border-slate-100 dark:border-slate-800">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-full bg-brand/10 flex items-center justify-center text-brand">
+              <i class="fa-solid fa-comments"></i>
+            </div>
+            <div>
+              <h3 class="text-sm font-bold" id="history-summary">No active session</h3>
+              <div class="flex items-center gap-2 mt-0.5">
+                <span id="session-model" class="text-[10px] px-1.5 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-500 font-medium hidden">Unknown Model</span>
+                <p class="text-xs text-slate-500" id="history-subtitle">Live conversation history</p>
+              </div>
+            </div>
           </div>
-          <span id="history-summary">未选择会话</span>
+          
+          <div id="traffic-stats" class="hidden md:block w-32 h-10">
+            <canvas id="traffic-chart"></canvas>
+          </div>
         </div>
-        <div id="history-list" class="history-list"></div>
+
+        <div id="history-list" class="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar scroll-smooth">
+          <!-- History rendered here -->
+          <div class="flex flex-col items-center justify-center h-full text-center space-y-4 opacity-50">
+            <i class="fa-solid fa-message-dots text-4xl text-slate-300"></i>
+            <p class="text-sm">Select a session from the sidebar to start</p>
+          </div>
+        </div>
       </section>
     </main>
   </div>
 
-  <div id="settings-modal" class="modal hidden">
-    <div class="modal-backdrop" data-close-modal="settings"></div>
-    <section class="modal-card">
-      <div class="modal-header">
-        <strong>Connection</strong>
-        <button class="text-btn" data-close-modal="settings">Close</button>
+  <!-- Settings Modal -->
+  <div id="settings-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 hidden animate-fade-in">
+    <div class="absolute inset-0 bg-slate-950/40 backdrop-blur-sm" data-close-modal="settings"></div>
+    <div class="relative w-full max-w-md bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+      <div class="p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center">
+        <h3 class="text-lg font-bold">Gateway Connection</h3>
+        <button class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200" data-close-modal="settings">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
       </div>
-      <label class="field">
-        <span>Gateway URL</span>
-        <input id="gateway-url" placeholder="ws://127.0.0.1:18789/ws">
-      </label>
-      <label class="field">
-        <span>Token</span>
-        <input id="gateway-token" placeholder="OPENCLAW_GATEWAY_TOKEN">
-      </label>
-      <label class="field">
-        <span>Scopes</span>
-        <input id="gateway-scopes" placeholder="operator.read,operator.write">
-      </label>
-      <div class="button-row">
-        <button id="save-settings-btn" class="ghost-btn">保存</button>
-        <button id="connect-btn" class="primary-btn">Connect</button>
-        <button id="disconnect-btn" class="ghost-btn">Disconnect</button>
+      <div class="p-6 space-y-4">
+        <div class="space-y-2">
+          <label class="text-xs font-bold text-slate-500 uppercase">Gateway URL</label>
+          <input id="gateway-url" type="text" class="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 focus:border-brand outline-none transition-all" placeholder="ws://127.0.0.1:18789/ws">
+        </div>
+        <div class="space-y-2">
+          <label class="text-xs font-bold text-slate-500 uppercase">Access Token</label>
+          <input id="gateway-token" type="password" class="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 focus:border-brand outline-none transition-all" placeholder="Enter token...">
+        </div>
+        <div class="space-y-2">
+          <label class="text-xs font-bold text-slate-500 uppercase">Permissions (Scopes)</label>
+          <input id="gateway-scopes" type="text" class="w-full px-4 py-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 focus:border-brand outline-none transition-all" value="operator.read,operator.write">
+        </div>
+        
+        <div class="pt-4 flex flex-col gap-2">
+          <button id="connect-btn" class="w-full py-3 bg-brand hover:bg-brand-strong text-white font-bold rounded-xl shadow-lg shadow-brand/20 transition-all active:scale-95">Connect Now</button>
+          <div class="grid grid-cols-2 gap-2">
+            <button id="save-settings-btn" class="py-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 font-semibold rounded-xl transition-all">Save Local</button>
+            <button id="disconnect-btn" class="py-2.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 font-semibold rounded-xl transition-all">Disconnect</button>
+          </div>
+        </div>
       </div>
-      <p class="hint">
-        首次访问可通过 URL 参数传入：
-        <code>?gateway=ws://127.0.0.1:18789/ws&token=xxx</code>
-      </p>
-    </section>
+    </div>
   </div>
 
-  <div id="status-modal" class="modal hidden">
-    <div class="modal-backdrop" data-close-modal="status"></div>
-    <section class="modal-card">
-      <div class="modal-header">
-        <strong>Status</strong>
-        <button class="text-btn" data-close-modal="status">Close</button>
+  <!-- Status Modal -->
+  <div id="status-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 hidden animate-fade-in">
+    <div class="absolute inset-0 bg-slate-950/40 backdrop-blur-sm" data-close-modal="status"></div>
+    <div class="relative w-full max-w-lg bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden">
+      <div class="p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center">
+        <h3 class="text-lg font-bold">System Status</h3>
+        <button class="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200" data-close-modal="status">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
       </div>
-      <div class="status-card">
-        <div class="status-row">
-          <span id="status-dot-detail" class="status-dot idle"></span>
-          <strong id="status-text">idle</strong>
-        </div>
-        <div id="status-detail" class="status-detail">未连接</div>
-        <div class="meta-grid">
+      <div class="p-6">
+        <div class="flex items-center gap-4 mb-8">
+          <div id="status-dot-detail" class="w-4 h-4 rounded-full bg-slate-400 animate-pulse"></div>
           <div>
-            <span>Protocol</span>
-            <strong id="protocol-version">-</strong>
-          </div>
-          <div>
-            <span>Conn ID</span>
-            <strong id="conn-id">-</strong>
-          </div>
-          <div>
-            <span>Device ID</span>
-            <strong id="device-id">-</strong>
-          </div>
-          <div>
-            <span>Frames</span>
-            <strong id="frame-count">0</strong>
+            <h4 id="status-text" class="text-2xl font-black uppercase tracking-tight">Idle</h4>
+            <p id="status-detail" class="text-sm text-slate-500">Not connected to gateway</p>
           </div>
         </div>
+
+        <div class="grid grid-cols-2 gap-4">
+          <div class="p-4 bg-slate-50 dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700">
+            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Protocol</span>
+            <strong id="protocol-version" class="text-lg font-mono">-</strong>
+          </div>
+          <div class="p-4 bg-slate-50 dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700">
+            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Frames</span>
+            <strong id="frame-count" class="text-lg font-mono">0</strong>
+          </div>
+          <div class="p-4 bg-slate-50 dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 col-span-2">
+            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Device ID</span>
+            <strong id="device-id" class="text-xs font-mono break-all">-</strong>
+          </div>
+          <div class="p-4 bg-slate-50 dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 col-span-2">
+            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Conn ID</span>
+            <strong id="conn-id" class="text-xs font-mono break-all">-</strong>
+          </div>
+        </div>
       </div>
-    </section>
+    </div>
   </div>
 
   <script src="./src/js/app.js"></script>
