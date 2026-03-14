@@ -259,21 +259,22 @@ function summarizeThinking(text) {
   return firstLine.length > 72 ? `${firstLine.slice(0, 72)}...` : firstLine;
 }
 
-function renderContentParts(entry) {
+function renderContentParts(entry, isStreaming = false) {
   const content = entry?.content;
   if (!Array.isArray(content)) {
     const fallback = extractMessageText(entry);
-    return `<div class="p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm text-sm leading-relaxed prose prose-slate dark:prose-invert max-w-none">${marked.parse(fallback)}</div>`;
+    return `<div class="p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm text-sm leading-relaxed prose prose-slate dark:prose-invert max-w-none break-words">${marked.parse(fallback)}</div>`;
   }
 
   const blocks = content
     .map((item) => {
       if (!item || typeof item !== "object") {
-        return `<div class="p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm text-sm leading-relaxed prose prose-slate dark:prose-invert max-w-none">${marked.parse(String(item ?? ""))}</div>`;
+        const text = String(item ?? "");
+        return `<div class="p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm text-sm leading-relaxed prose prose-slate dark:prose-invert max-w-none break-words">${marked.parse(text)}</div>`;
       }
 
       if (item.type === "text") {
-        return `<div class="p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm text-sm leading-relaxed prose prose-slate dark:prose-invert max-w-none">${marked.parse(item.text || "")}</div>`;
+        return `<div class="p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm text-sm leading-relaxed prose prose-slate dark:prose-invert max-w-none break-words">${marked.parse(item.text || "")}</div>`;
       }
 
       if (item.type === "thinking") {
@@ -314,7 +315,7 @@ function renderContentParts(entry) {
     })
     .join("");
 
-  return `<div class="space-y-3 animate-fade-in">${blocks}</div>`;
+  return `<div class="space-y-3">${blocks}</div>`;
 }
 
 function renderToolResult(entry) {
@@ -322,12 +323,13 @@ function renderToolResult(entry) {
   const isError = entry?.isError;
   const { summary, lineCount } = summarizeToolResult(text);
   const shouldOpen = isError || lineCount <= 3;
-  
+
   const bgClass = isError ? "bg-rose-50/30 dark:bg-rose-900/10 border-rose-100 dark:border-rose-900/30" : "bg-emerald-50/30 dark:bg-emerald-900/10 border-emerald-100 dark:border-emerald-900/30";
   const badgeClass = isError ? "bg-rose-100 dark:bg-rose-900/40 text-rose-500 dark:text-rose-400" : "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-500 dark:text-emerald-400";
-  
+
   return `
-    <details class="group ${bgClass} border rounded-2xl overflow-hidden transition-all animate-fade-in" ${shouldOpen ? "open" : ""}>
+    <details class="group ${bgClass} border rounded-2xl overflow-hidden transition-all" ${shouldOpen ? "open" : ""}>
+
       <summary class="flex items-center gap-3 px-4 py-3 cursor-pointer list-none">
         <span class="px-2 py-0.5 rounded-md ${badgeClass} text-[10px] font-bold uppercase tracking-wider">${isError ? "Error" : "Result"}</span>
         <span class="text-xs font-bold text-slate-700 dark:text-slate-300">${escapeHtml(entry?.toolName || "tool")}</span>
@@ -360,6 +362,91 @@ function getRoleIcon(role, isError = false) {
     default:
       return '<i class="fa-solid fa-circle-question text-slate-300"></i>';
   }
+}
+
+function renderMessage(entry) {
+  const role = entry?.role || "unknown";
+  const isError = role === "toolResult" && entry.isError;
+  const isStreaming = entry.runId && !entry.final;
+  const statusLabel = entry.final ? "final" : entry.runId ? "streaming" : "";
+  const isUser = role === "user";
+  const liveKey = entry.liveKey || "";
+  
+  let bodyHtml = "";
+  if (role === "toolResult") {
+    bodyHtml = renderToolResult(entry);
+  } else {
+    bodyHtml = renderContentParts(entry, isStreaming);
+  }
+  
+  return `
+    <article class="flex gap-4 ${isUser ? "flex-row-reverse" : "flex-row"} group animate-fade-in" data-live-key="${escapeHtml(liveKey)}">
+      <div class="flex-shrink-0 w-8 h-8 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-sm shadow-sm group-hover:scale-110 transition-transform">
+        ${getRoleIcon(role, isError)}
+      </div>
+      <div class="flex-1 min-w-0 max-w-[85%] space-y-1.5">
+        <header class="flex items-center gap-2 px-1 ${isUser ? "flex-row-reverse" : "flex-row"}">
+          <span class="text-[10px] font-black uppercase tracking-widest text-slate-400">${escapeHtml(role)}</span>
+          ${statusLabel ? `
+            <span class="history-status-badge px-1.5 py-0.5 rounded-full text-[8px] font-bold uppercase tracking-tighter ${entry.final ? "bg-slate-100 dark:bg-slate-800 text-slate-400" : "bg-brand/10 text-brand animate-pulse"}">
+              ${escapeHtml(statusLabel)}
+            </span>` : ""}
+        </header>
+        <div class="message-body-container ${isUser ? "flex justify-end" : ""}">
+          ${bodyHtml}
+        </div>
+      </div>
+    </article>
+  `;
+}
+
+function scrollToBottom(force = false) {
+  const list = els.historyList;
+  if (!list) return;
+  const threshold = 100;
+  const isAtBottom = list.scrollHeight - list.scrollTop - list.clientHeight < threshold;
+  if (force || isAtBottom) {
+    list.scrollTo({ top: list.scrollHeight, behavior: force ? "auto" : "smooth" });
+  }
+}
+
+function upsertMessageDOM(entry) {
+  const liveKey = entry.liveKey;
+  if (!liveKey) {
+    renderHistory();
+    return;
+  }
+
+  const existingNode = els.historyList.querySelector(`[data-live-key="${liveKey}"]`);
+  if (existingNode) {
+    // Update body
+    const bodyContainer = existingNode.querySelector(".message-body-container");
+    if (bodyContainer) {
+      const role = entry?.role || "unknown";
+      const isStreaming = entry.runId && !entry.final;
+      bodyContainer.innerHTML = (role === "toolResult") ? renderToolResult(entry) : renderContentParts(entry, isStreaming);
+    }
+    // Update status badge
+    const badge = existingNode.querySelector(".history-status-badge");
+    if (badge) {
+      const statusLabel = entry.final ? "final" : entry.runId ? "streaming" : "";
+      badge.textContent = statusLabel;
+      badge.className = `history-status-badge px-1.5 py-0.5 rounded-full text-[8px] font-bold uppercase tracking-tighter ${entry.final ? "bg-slate-100 dark:bg-slate-800 text-slate-400" : "bg-brand/10 text-brand animate-pulse"}`;
+      if (!statusLabel) badge.remove();
+    } else if (entry.runId) {
+      // Re-add badge if it was missing but should be there (e.g. streaming started)
+      const header = existingNode.querySelector("header");
+      const statusLabel = entry.final ? "final" : "streaming";
+      const badgeHtml = `<span class="history-status-badge px-1.5 py-0.5 rounded-full text-[8px] font-bold uppercase tracking-tighter ${entry.final ? "bg-slate-100 dark:bg-slate-800 text-slate-400" : "bg-brand/10 text-brand animate-pulse"}">${statusLabel}</span>`;
+      header.insertAdjacentHTML('beforeend', badgeHtml);
+    }
+  } else {
+    // Append new message
+    const temp = document.createElement("div");
+    temp.innerHTML = renderMessage(entry);
+    els.historyList.appendChild(temp.firstElementChild);
+  }
+  scrollToBottom();
 }
 
 function renderHistory() {
@@ -414,44 +501,10 @@ function renderHistory() {
   }
 
   els.historyList.innerHTML = state.history
-    .map((entry) => {
-      const role = entry?.role || "unknown";
-      const isError = role === "toolResult" && entry.isError;
-      const statusLabel = entry.final ? "final" : entry.runId ? "streaming" : "";
-      const isUser = role === "user";
-      
-      let bodyHtml = "";
-      if (role === "toolResult") {
-        bodyHtml = renderToolResult(entry);
-      } else {
-        bodyHtml = renderContentParts(entry);
-      }
-      
-      return `
-        <article class="flex gap-4 ${isUser ? "flex-row-reverse" : "flex-row"} group">
-          <div class="flex-shrink-0 w-8 h-8 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-sm shadow-sm group-hover:scale-110 transition-transform">
-            ${getRoleIcon(role, isError)}
-          </div>
-          <div class="flex-1 min-w-0 max-w-[85%] space-y-1.5">
-            <header class="flex items-center gap-2 px-1 ${isUser ? "flex-row-reverse" : "flex-row"}">
-              <span class="text-[10px] font-black uppercase tracking-widest text-slate-400">${escapeHtml(role)}</span>
-              ${statusLabel ? `
-                <span class="px-1.5 py-0.5 rounded-full text-[8px] font-bold uppercase tracking-tighter ${entry.final ? "bg-slate-100 dark:bg-slate-800 text-slate-400" : "bg-brand/10 text-brand animate-pulse"}">
-                  ${escapeHtml(statusLabel)}
-                </span>` : ""}
-            </header>
-            <div class="${isUser ? "flex justify-end" : ""}">
-              ${bodyHtml}
-            </div>
-          </div>
-        </article>
-      `;
-    })
+    .map((entry) => renderMessage(entry))
     .join("");
 
-  requestAnimationFrame(() => {
-    els.historyList.scrollTop = els.historyList.scrollHeight;
-  });
+  scrollToBottom(true);
 }
 
 function markRealtimeActivity() {
@@ -688,7 +741,7 @@ function upsertLiveMessage({ sessionKey, runId, role, text, final }) {
   }
 
   state.liveRuns.set(liveKey, nextEntry);
-  renderHistory();
+  upsertMessageDOM(nextEntry);
 }
 
 function upsertLiveEntry(liveKey, nextEntry) {
@@ -703,7 +756,7 @@ function upsertLiveEntry(liveKey, nextEntry) {
     state.history.push(nextEntry);
   }
   state.liveRuns.set(liveKey, nextEntry);
-  renderHistory();
+  upsertMessageDOM(nextEntry);
 }
 
 function summarizeJson(value, fallback = "") {
