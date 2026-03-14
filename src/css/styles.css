@@ -379,6 +379,69 @@ button {
   line-height: 1.7;
 }
 
+.thinking-card {
+  border: 1px solid #d8d4cb;
+  border-radius: 14px;
+  background:
+    linear-gradient(180deg, rgba(247, 244, 239, 0.98), rgba(242, 238, 232, 0.92));
+  overflow: hidden;
+}
+
+.thinking-card summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  cursor: pointer;
+  list-style: none;
+  padding: 10px 12px;
+}
+
+.thinking-card summary::-webkit-details-marker {
+  display: none;
+}
+
+.thinking-card summary::after {
+  content: "+";
+  margin-left: auto;
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.thinking-card[open] summary::after {
+  content: "-";
+}
+
+.thinking-label {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #ece7de;
+  color: #6a6257;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.thinking-summary {
+  min-width: 0;
+  flex: 1 1 220px;
+  color: #554f45;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.thinking-body {
+  padding: 0 12px 12px;
+  color: #5e574d;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.7;
+  font-size: 13px;
+}
+
 .tool-card {
   border: 1px solid var(--line);
   border-radius: 14px;

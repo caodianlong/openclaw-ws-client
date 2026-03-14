@@ -229,6 +229,13 @@ function summarizeToolResult(text) {
   };
 }
 
+function summarizeThinking(text) {
+  const normalized = String(text || "").replace(/\*\*/g, "").trim();
+  if (!normalized) return "思考过程";
+  const firstLine = normalized.split("\n").find(Boolean) || normalized;
+  return firstLine.length > 72 ? `${firstLine.slice(0, 72)}...` : firstLine;
+}
+
 function renderContentParts(entry) {
   const content = entry?.content;
   if (!Array.isArray(content)) {
@@ -244,6 +251,20 @@ function renderContentParts(entry) {
 
       if (item.type === "text") {
         return `<div class="history-text">${escapeHtml(item.text || "")}</div>`;
+      }
+
+      if (item.type === "thinking") {
+        const thinkingText = item.thinking || "";
+        const summary = summarizeThinking(thinkingText);
+        return `
+          <details class="thinking-card">
+            <summary>
+              <span class="thinking-label">thinking</span>
+              <span class="thinking-summary">${escapeHtml(summary)}</span>
+            </summary>
+            <div class="thinking-body">${escapeHtml(thinkingText)}</div>
+          </details>
+        `;
       }
 
       if (item.type === "toolCall") {
