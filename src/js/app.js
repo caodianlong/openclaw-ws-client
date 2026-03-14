@@ -87,21 +87,20 @@ function setStatus(status, detail) {
   if (els.statusTextHeader) els.statusTextHeader.textContent = status;
   if (els.statusDetail) els.statusDetail.textContent = detail;
   
-  const dotClasses = "w-2 h-2 rounded-full transition-all duration-300 ";
   let colorClass = "bg-slate-400";
-  if (status === "connecting" || status === "handshaking") colorClass = "bg-amber-400 animate-pulse";
-  else if (status === "connected") colorClass = "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]";
+  if (status === "connecting" || status === "handshaking") colorClass = "bg-amber-400";
+  else if (status === "connected") colorClass = "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]";
   else if (status === "error" || status === "closed") colorClass = "bg-rose-500";
   
-  if (els.statusDot) els.statusDot.className = dotClasses + colorClass;
-  if (els.statusDotDetail) els.statusDotDetail.className = "w-4 h-4 rounded-full transition-all duration-300 " + colorClass;
+  if (els.statusDot) els.statusDot.className = `w-2 h-2 rounded-full ${colorClass}`;
+  if (els.statusDotDetail) els.statusDotDetail.className = `w-3 h-3 rounded-full ${colorClass}`;
 }
 
 function renderPollingButton() {
   const active = state.pollEnabled;
   els.pollToggleBtn.classList.toggle("border-brand", active);
   els.pollToggleBtn.classList.toggle("text-brand", active);
-  els.pollDot.className = `w-2 h-2 rounded-full transition-all ${active ? "bg-brand shadow-[0_0_8px_rgba(255,116,66,0.5)]" : "bg-slate-300"}`;
+  els.pollDot.className = `w-2 h-2 rounded-full ${active ? "bg-brand" : "bg-slate-300"}`;
 }
 
 function clearReconnectTimer() {
@@ -133,11 +132,9 @@ function setModalVisible(name, visible) {
 }
 
 function copyFramesLabel(text, ok = false) {
-  els.copyFramesBtn.textContent = text;
-  els.copyFramesBtn.classList.toggle("copy-ok", ok);
+  els.copyFramesBtn.innerHTML = ok ? '<i class="fa-solid fa-check text-emerald-500"></i>' : text;
   window.setTimeout(() => {
-    els.copyFramesBtn.textContent = "Copy";
-    els.copyFramesBtn.classList.remove("copy-ok");
+    els.copyFramesBtn.innerHTML = '<i class="fa-solid fa-copy"></i>';
   }, 1600);
 }
 
@@ -153,17 +150,17 @@ async function copyFrames() {
     await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
     copyFramesLabel("Copied", true);
   } catch {
-    copyFramesLabel("Copy failed");
+    copyFramesLabel('<i class="fa-solid fa-xmark text-rose-500"></i>');
   }
 }
 
 function renderFrames() {
-  els.frameCount.textContent = String(state.frameCount);
+  if (els.frameCount) els.frameCount.textContent = String(state.frameCount);
 }
 
 function renderSessions() {
   if (!state.sessions.length) {
-    els.sessionList.innerHTML = `<div class="px-3 py-2 text-sm text-slate-500 italic">No sessions found</div>`;
+    els.sessionList.innerHTML = `<div class="px-2 py-2 text-sm text-slate-500 italic">No sessions found</div>`;
     return;
   }
 
@@ -172,14 +169,12 @@ function renderSessions() {
       const active = session.key === state.activeSessionKey;
       const activeClass = active 
         ? "bg-brand/10 text-brand border-brand/20 shadow-sm" 
-        : "text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 border-transparent";
+        : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 border-transparent";
       
       return `
-        <article class="session-item group px-3 py-2.5 rounded-xl border text-sm font-medium transition-all cursor-pointer ${activeClass}" data-key="${escapeHtml(session.key)}">
-          <div class="flex items-center justify-between">
-            <span class="truncate pr-2">${escapeHtml(session.displayName || session.key)}</span>
-            ${active ? '<i class="fa-solid fa-chevron-right text-[10px]"></i>' : ""}
-          </div>
+        <article class="session-item group px-3 py-2.5 rounded-lg border text-sm font-medium cursor-pointer flex justify-between items-center ${activeClass}" data-key="${escapeHtml(session.key)}">
+          <span class="truncate pr-2">${escapeHtml(session.displayName || session.key)}</span>
+          ${active ? '<i class="fa-solid fa-chevron-right text-[10px] text-brand"></i>' : ""}
         </article>
       `;
     })
@@ -227,7 +222,7 @@ function summarizeToolCall(item) {
     return args.command.trim();
   }
   const entries = Object.entries(args).slice(0, 2);
-  if (!entries.length) return "No parameters";
+  if (!entries.length) return "无参数";
   return entries.map(([key, value]) => `${key}=${typeof value === "string" ? value : JSON.stringify(value)}`).join(" ");
 }
 
@@ -247,14 +242,14 @@ function summarizeToolResult(text) {
   const firstLine = lines[0] || "";
   const summary = firstLine.length > 96 ? `${firstLine.slice(0, 96)}...` : firstLine;
   return {
-    summary: summary || "Empty output",
+    summary: summary || "空输出",
     lineCount: lines.length,
   };
 }
 
 function summarizeThinking(text) {
   const normalized = String(text || "").replace(/\*\*/g, "").trim();
-  if (!normalized) return "Thinking process";
+  if (!normalized) return "思考过程";
   const firstLine = normalized.split("\n").find(Boolean) || normalized;
   return firstLine.length > 72 ? `${firstLine.slice(0, 72)}...` : firstLine;
 }
@@ -263,31 +258,31 @@ function renderContentParts(entry, isStreaming = false) {
   const content = entry?.content;
   if (!Array.isArray(content)) {
     const fallback = extractMessageText(entry);
-    return `<div class="p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm text-sm leading-relaxed prose prose-slate dark:prose-invert max-w-none break-words">${marked.parse(fallback)}</div>`;
+    return `<div class="p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm text-sm leading-relaxed prose prose-slate dark:prose-invert max-w-none break-words">${marked.parse(fallback)}</div>`;
   }
 
   const blocks = content
     .map((item) => {
       if (!item || typeof item !== "object") {
         const text = String(item ?? "");
-        return `<div class="p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm text-sm leading-relaxed prose prose-slate dark:prose-invert max-w-none break-words">${marked.parse(text)}</div>`;
+        return `<div class="p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm text-sm leading-relaxed prose prose-slate dark:prose-invert max-w-none break-words">${marked.parse(text)}</div>`;
       }
 
       if (item.type === "text") {
-        return `<div class="p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm text-sm leading-relaxed prose prose-slate dark:prose-invert max-w-none break-words">${marked.parse(item.text || "")}</div>`;
+        return `<div class="p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm text-sm leading-relaxed prose prose-slate dark:prose-invert max-w-none break-words">${marked.parse(item.text || "")}</div>`;
       }
 
       if (item.type === "thinking") {
         const thinkingText = item.thinking || "";
         const summary = summarizeThinking(thinkingText);
         return `
-          <details class="group bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden transition-all">
-            <summary class="flex items-center gap-3 px-4 py-3 cursor-pointer list-none">
-              <span class="px-2 py-0.5 rounded-md bg-slate-200 dark:bg-slate-700 text-[10px] font-bold uppercase tracking-wider text-slate-500">Thinking</span>
+          <details class="group bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden">
+            <summary class="flex items-center gap-2 px-3 py-2 cursor-pointer list-none">
+              <span class="px-2 py-0.5 rounded bg-slate-200 dark:bg-slate-700 text-[10px] font-bold uppercase tracking-wider text-slate-500">Thinking</span>
               <span class="text-xs text-slate-500 truncate italic">${escapeHtml(summary)}</span>
               <i class="fa-solid fa-chevron-down ml-auto text-[10px] text-slate-400 group-open:rotate-180 transition-transform"></i>
             </summary>
-            <div class="px-4 pb-4 text-xs text-slate-500 dark:text-slate-400 border-t border-slate-100 dark:border-slate-800 pt-3 whitespace-pre-wrap leading-relaxed">${escapeHtml(thinkingText)}</div>
+            <div class="px-3 pb-3 text-xs text-slate-500 dark:text-slate-400 border-t border-slate-100 dark:border-slate-800 pt-2 whitespace-pre-wrap leading-relaxed">${escapeHtml(thinkingText)}</div>
           </details>
         `;
       }
@@ -296,16 +291,16 @@ function renderContentParts(entry, isStreaming = false) {
         const args = JSON.stringify(item.arguments || {}, null, 2);
         const summary = summarizeToolCall(item);
         return `
-          <details class="group bg-indigo-50/30 dark:bg-indigo-900/10 border border-indigo-100 dark:border-indigo-900/30 rounded-2xl overflow-hidden transition-all">
-            <summary class="flex items-center gap-3 px-4 py-3 cursor-pointer list-none">
-              <span class="px-2 py-0.5 rounded-md bg-indigo-100 dark:bg-indigo-900/40 text-[10px] font-bold uppercase tracking-wider text-indigo-500 dark:text-indigo-400">Call</span>
+          <details class="group bg-indigo-50/30 dark:bg-indigo-900/10 border border-indigo-100 dark:border-indigo-900/30 rounded-xl overflow-hidden">
+            <summary class="flex items-center gap-2 px-3 py-2 cursor-pointer list-none">
+              <span class="px-2 py-0.5 rounded bg-indigo-100 dark:bg-indigo-900/40 text-[10px] font-bold uppercase tracking-wider text-indigo-500 dark:text-indigo-400">Call</span>
               <span class="text-xs font-bold text-slate-700 dark:text-slate-300">${escapeHtml(item.name || "unknown")}</span>
               <span class="text-[10px] text-slate-500 truncate italic">${escapeHtml(summary)}</span>
               <i class="fa-solid fa-chevron-down ml-auto text-[10px] text-slate-400 group-open:rotate-180 transition-transform"></i>
             </summary>
-            <div class="px-4 pb-4 border-t border-indigo-50 dark:border-indigo-900/20 pt-3">
-              ${item.id ? `<div class="mb-2"><span class="text-[9px] font-bold text-slate-400 uppercase mr-2">ID</span><code class="text-[10px] text-slate-500">${escapeHtml(item.id)}</code></div>` : ""}
-              <pre class="p-3 bg-slate-900 text-indigo-300 rounded-xl text-[10px] font-mono overflow-x-auto">${escapeHtml(args)}</pre>
+            <div class="px-3 pb-3 border-t border-indigo-50 dark:border-indigo-900/20 pt-2">
+              ${item.id ? `<div class="mb-1"><span class="text-[9px] font-bold text-slate-400 uppercase mr-2">ID</span><code class="text-[10px] text-slate-500">${escapeHtml(item.id)}</code></div>` : ""}
+              <pre class="p-2 bg-slate-900 text-indigo-300 rounded-lg text-[10px] font-mono overflow-x-auto">${escapeHtml(args)}</pre>
             </div>
           </details>
         `;
@@ -315,7 +310,7 @@ function renderContentParts(entry, isStreaming = false) {
     })
     .join("");
 
-  return `<div class="space-y-3">${blocks}</div>`;
+  return `<div class="space-y-2">${blocks}</div>`;
 }
 
 function renderToolResult(entry) {
@@ -323,23 +318,22 @@ function renderToolResult(entry) {
   const isError = entry?.isError;
   const { summary, lineCount } = summarizeToolResult(text);
   const shouldOpen = isError || lineCount <= 3;
-
+  
   const bgClass = isError ? "bg-rose-50/30 dark:bg-rose-900/10 border-rose-100 dark:border-rose-900/30" : "bg-emerald-50/30 dark:bg-emerald-900/10 border-emerald-100 dark:border-emerald-900/30";
   const badgeClass = isError ? "bg-rose-100 dark:bg-rose-900/40 text-rose-500 dark:text-rose-400" : "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-500 dark:text-emerald-400";
-
+  
   return `
-    <details class="group ${bgClass} border rounded-2xl overflow-hidden transition-all" ${shouldOpen ? "open" : ""}>
-
-      <summary class="flex items-center gap-3 px-4 py-3 cursor-pointer list-none">
-        <span class="px-2 py-0.5 rounded-md ${badgeClass} text-[10px] font-bold uppercase tracking-wider">${isError ? "Error" : "Result"}</span>
+    <details class="group ${bgClass} border rounded-xl overflow-hidden" ${shouldOpen ? "open" : ""}>
+      <summary class="flex items-center gap-2 px-3 py-2 cursor-pointer list-none">
+        <span class="px-2 py-0.5 rounded ${badgeClass} text-[10px] font-bold uppercase tracking-wider">${isError ? "Error" : "Result"}</span>
         <span class="text-xs font-bold text-slate-700 dark:text-slate-300">${escapeHtml(entry?.toolName || "tool")}</span>
         <span class="text-[10px] text-slate-500 truncate italic">${escapeHtml(summary)}</span>
         <span class="text-[9px] text-slate-400 ml-auto">${lineCount} lines</span>
         <i class="fa-solid fa-chevron-down text-[10px] text-slate-400 group-open:rotate-180 transition-transform"></i>
       </summary>
-      <div class="px-4 pb-4 border-t border-slate-100 dark:border-slate-800/50 pt-3">
-        ${entry?.toolCallId ? `<div class="mb-2"><span class="text-[9px] font-bold text-slate-400 uppercase mr-2">Call ID</span><code class="text-[10px] text-slate-500">${escapeHtml(entry.toolCallId)}</code></div>` : ""}
-        <pre class="p-3 bg-slate-900 text-slate-300 rounded-xl text-[10px] font-mono overflow-x-auto leading-relaxed">${escapeHtml(text)}</pre>
+      <div class="px-3 pb-3 border-t border-slate-100 dark:border-slate-800/50 pt-2">
+        ${entry?.toolCallId ? `<div class="mb-1"><span class="text-[9px] font-bold text-slate-400 uppercase mr-2">Call ID</span><code class="text-[10px] text-slate-500">${escapeHtml(entry.toolCallId)}</code></div>` : ""}
+        <pre class="p-2 bg-slate-900 text-slate-300 rounded-lg text-[10px] font-mono overflow-x-auto leading-relaxed">${escapeHtml(text)}</pre>
       </div>
     </details>
   `;
@@ -347,20 +341,12 @@ function renderToolResult(entry) {
 
 function getRoleIcon(role, isError = false) {
   switch (role) {
-    case "user":
-      return '<i class="fa-solid fa-circle-user text-blue-500"></i>';
-    case "assistant":
-      return '<i class="fa-solid fa-robot text-emerald-500"></i>';
-    case "system":
-      return '<i class="fa-solid fa-gears text-slate-400"></i>';
-    case "tool":
-      return '<i class="fa-solid fa-screwdriver-wrench text-indigo-500"></i>';
-    case "toolResult":
-      return isError 
-        ? '<i class="fa-solid fa-circle-exclamation text-rose-500"></i>' 
-        : '<i class="fa-solid fa-circle-check text-emerald-500"></i>';
-    default:
-      return '<i class="fa-solid fa-circle-question text-slate-300"></i>';
+    case "user": return '<i class="fa-solid fa-circle-user text-blue-500"></i>';
+    case "assistant": return '<i class="fa-solid fa-robot text-emerald-500"></i>';
+    case "system": return '<i class="fa-solid fa-gears text-slate-400"></i>';
+    case "tool": return '<i class="fa-solid fa-screwdriver-wrench text-indigo-500"></i>';
+    case "toolResult": return isError ? '<i class="fa-solid fa-circle-exclamation text-rose-500"></i>' : '<i class="fa-solid fa-circle-check text-emerald-500"></i>';
+    default: return '<i class="fa-solid fa-circle-question text-slate-300"></i>';
   }
 }
 
@@ -380,15 +366,15 @@ function renderMessage(entry) {
   }
   
   return `
-    <article class="flex gap-4 ${isUser ? "flex-row-reverse" : "flex-row"} group animate-fade-in" data-live-key="${escapeHtml(liveKey)}">
-      <div class="flex-shrink-0 w-8 h-8 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-sm shadow-sm group-hover:scale-110 transition-transform">
+    <article class="flex gap-4 ${isUser ? "flex-row-reverse" : "flex-row"} group" data-live-key="${escapeHtml(liveKey)}">
+      <div class="flex-shrink-0 w-8 h-8 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-sm shadow-sm">
         ${getRoleIcon(role, isError)}
       </div>
       <div class="flex-1 min-w-0 max-w-[85%] space-y-1.5">
         <header class="flex items-center gap-2 px-1 ${isUser ? "flex-row-reverse" : "flex-row"}">
           <span class="text-[10px] font-black uppercase tracking-widest text-slate-400">${escapeHtml(role)}</span>
           ${statusLabel ? `
-            <span class="history-status-badge px-1.5 py-0.5 rounded-full text-[8px] font-bold uppercase tracking-tighter ${entry.final ? "bg-slate-100 dark:bg-slate-800 text-slate-400" : "bg-brand/10 text-brand animate-pulse"}">
+            <span class="history-status-badge px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-tighter ${entry.final ? "bg-slate-100 dark:bg-slate-800 text-slate-400" : "bg-brand/10 text-brand"}">
               ${escapeHtml(statusLabel)}
             </span>` : ""}
         </header>
@@ -400,14 +386,22 @@ function renderMessage(entry) {
   `;
 }
 
-function scrollToBottom(force = false) {
+function scrollToBottom({ force = false, instant = false } = {}) {
   const list = els.historyList;
   if (!list) return;
-  const threshold = 100;
-  const isAtBottom = list.scrollHeight - list.scrollTop - list.clientHeight < threshold;
-  if (force || isAtBottom) {
-    list.scrollTo({ top: list.scrollHeight, behavior: force ? "auto" : "smooth" });
-  }
+  
+  // Use requestAnimationFrame to ensure the DOM has updated its scrollHeight
+  requestAnimationFrame(() => {
+    const threshold = 300;
+    const isAtBottom = list.scrollHeight - list.scrollTop - list.clientHeight < threshold;
+    
+    if (force || isAtBottom) {
+      list.scrollTo({ 
+        top: list.scrollHeight, 
+        behavior: instant ? "auto" : "smooth" 
+      });
+    }
+  });
 }
 
 function upsertMessageDOM(entry) {
@@ -418,53 +412,64 @@ function upsertMessageDOM(entry) {
   }
 
   const existingNode = els.historyList.querySelector(`[data-live-key="${liveKey}"]`);
+  let isNewNode = false;
+
   if (existingNode) {
-    // Update body
     const bodyContainer = existingNode.querySelector(".message-body-container");
     if (bodyContainer) {
       const role = entry?.role || "unknown";
       const isStreaming = entry.runId && !entry.final;
       bodyContainer.innerHTML = (role === "toolResult") ? renderToolResult(entry) : renderContentParts(entry, isStreaming);
     }
-    // Update status badge
     const badge = existingNode.querySelector(".history-status-badge");
     if (badge) {
       const statusLabel = entry.final ? "final" : entry.runId ? "streaming" : "";
       badge.textContent = statusLabel;
-      badge.className = `history-status-badge px-1.5 py-0.5 rounded-full text-[8px] font-bold uppercase tracking-tighter ${entry.final ? "bg-slate-100 dark:bg-slate-800 text-slate-400" : "bg-brand/10 text-brand animate-pulse"}`;
+      badge.className = `history-status-badge px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-tighter ${entry.final ? "bg-slate-100 dark:bg-slate-800 text-slate-400" : "bg-brand/10 text-brand"}`;
       if (!statusLabel) badge.remove();
     } else if (entry.runId) {
-      // Re-add badge if it was missing but should be there (e.g. streaming started)
       const header = existingNode.querySelector("header");
       const statusLabel = entry.final ? "final" : "streaming";
-      const badgeHtml = `<span class="history-status-badge px-1.5 py-0.5 rounded-full text-[8px] font-bold uppercase tracking-tighter ${entry.final ? "bg-slate-100 dark:bg-slate-800 text-slate-400" : "bg-brand/10 text-brand animate-pulse"}">${statusLabel}</span>`;
+      const badgeHtml = `<span class="history-status-badge px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-tighter ${entry.final ? "bg-slate-100 dark:bg-slate-800 text-slate-400" : "bg-brand/10 text-brand"}">${statusLabel}</span>`;
       header.insertAdjacentHTML('beforeend', badgeHtml);
     }
   } else {
-    // Append new message
+    isNewNode = true;
     const temp = document.createElement("div");
     temp.innerHTML = renderMessage(entry);
-    els.historyList.appendChild(temp.firstElementChild);
+    const newNode = temp.firstElementChild;
+    
+    if (entry._insertBeforeLiveKey) {
+      const referenceNode = els.historyList.querySelector(`[data-live-key="${entry._insertBeforeLiveKey}"]`);
+      if (referenceNode) {
+        els.historyList.insertBefore(newNode, referenceNode);
+      } else {
+        els.historyList.appendChild(newNode);
+      }
+    } else {
+      els.historyList.appendChild(newNode);
+    }
   }
-  scrollToBottom();
+  
+  const isStreaming = entry.runId && !entry.final;
+  // Force scroll if it's a new message. Use instant scroll during active streaming to prevent stutter.
+  scrollToBottom({ force: isNewNode, instant: isStreaming });
 }
 
 function renderHistory() {
   if (!state.activeSessionKey) {
-    els.historySummary.textContent = "No active session";
+    if (els.historySummary) els.historySummary.textContent = "No active session";
     if (els.sessionModel) els.sessionModel.classList.add("hidden");
     if (els.historySubtitle) els.historySubtitle.textContent = "Live conversation history";
-    els.historyList.innerHTML = `
-      <div class="flex flex-col items-center justify-center h-full text-center space-y-4 opacity-50">
-        <i class="fa-solid fa-message-dots text-4xl text-slate-300"></i>
+    if (els.historyList) els.historyList.innerHTML = `
+      <div class="flex flex-col items-center justify-center h-full text-center space-y-3 opacity-50">
+        <i class="fa-solid fa-message-dots text-3xl text-slate-400"></i>
         <p class="text-sm">Select a session from the sidebar to view history</p>
       </div>`;
     return;
   }
 
   const currentSession = state.sessions.find(s => s.key === state.activeSessionKey);
-  
-  // Try to find provider/model in session first, then in the latest messages
   let provider = currentSession?.provider || currentSession?.metadata?.provider || "";
   let model = currentSession?.model || currentSession?.metadata?.model || "";
   
@@ -487,24 +492,23 @@ function renderHistory() {
     }
   }
 
-  els.historySummary.textContent = `${state.activeSessionKey}`;
+  if (els.historySummary) els.historySummary.textContent = `${state.activeSessionKey}`;
   const count = state.history.length;
   if (els.historySubtitle) els.historySubtitle.textContent = `${count} messages in this thread`;
 
   if (!state.history.length) {
-    els.historyList.innerHTML = `
-      <div class="flex flex-col items-center justify-center h-full text-center space-y-4 opacity-30">
-        <i class="fa-solid fa-inbox text-4xl"></i>
+    if (els.historyList) els.historyList.innerHTML = `
+      <div class="flex flex-col items-center justify-center h-full text-center space-y-3 opacity-30">
+        <i class="fa-solid fa-inbox text-3xl"></i>
         <p class="text-sm font-medium">This session has no messages yet</p>
       </div>`;
     return;
   }
 
-  els.historyList.innerHTML = state.history
-    .map((entry) => renderMessage(entry))
-    .join("");
-
-  scrollToBottom(true);
+  if (els.historyList) {
+    els.historyList.innerHTML = state.history.map((entry) => renderMessage(entry)).join("");
+    scrollToBottom({ force: true, instant: true });
+  }
 }
 
 function markRealtimeActivity() {
@@ -746,6 +750,7 @@ function upsertLiveMessage({ sessionKey, runId, role, text, final }) {
 
 function upsertLiveEntry(liveKey, nextEntry) {
   const existingIndex = state.history.findIndex((item) => item.liveKey === liveKey);
+  
   if (existingIndex >= 0) {
     state.history[existingIndex] = {
       ...state.history[existingIndex],
@@ -753,8 +758,37 @@ function upsertLiveEntry(liveKey, nextEntry) {
       final: nextEntry.final || state.history[existingIndex].final,
     };
   } else {
-    state.history.push(nextEntry);
+    // If inserting a tool/toolResult, check if there's an active assistant message for this runId at the end.
+    // To match backend final history order, tool calls should appear BEFORE the assistant's final text.
+    let insertIndex = state.history.length;
+    let insertBeforeLiveKey = null;
+    
+    if (nextEntry.role === "tool" || nextEntry.role === "toolResult") {
+      let assistantIdx = -1;
+      for (let i = state.history.length - 1; i >= 0; i--) {
+        if (state.history[i].runId === nextEntry.runId) {
+          if (state.history[i].role === "assistant") {
+            assistantIdx = i;
+          }
+        } else {
+          break; // Stop if we hit a different run
+        }
+      }
+      
+      if (assistantIdx >= 0) {
+        insertIndex = assistantIdx;
+        insertBeforeLiveKey = state.history[assistantIdx].liveKey;
+        nextEntry._insertBeforeLiveKey = insertBeforeLiveKey;
+      }
+    }
+    
+    if (insertIndex < state.history.length) {
+      state.history.splice(insertIndex, 0, nextEntry);
+    } else {
+      state.history.push(nextEntry);
+    }
   }
+  
   state.liveRuns.set(liveKey, nextEntry);
   upsertMessageDOM(nextEntry);
 }
@@ -1421,3 +1455,4 @@ function init() {
 }
 
 init();
+
